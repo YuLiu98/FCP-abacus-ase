@@ -190,7 +190,7 @@ class FCP(FileIOCalculator):
                 self.innercalc.set(nelect=self.Nelect)
             elif self.innercalc.name=='abacus':
                 self.update_abacus_para({'nelec':self.Nelect})
-                self.innercalc = Abacus(profile=self.innercalc.profile, **self.innercalc.parameters)
+                self.innercalc = Abacus(profile=self.innercalc.profile, directory=self.innercalc.directory, **self.innercalc.parameters)
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
 

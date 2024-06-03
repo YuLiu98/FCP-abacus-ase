@@ -73,7 +73,7 @@ The original paper used the code of version 1.0
     cal_FCP=FCP(innercalc = cal_abacus,                     # DFT calculator
                 fcptxt = 'log-fcp.txt',                     # log file
                 U = 0.8,                                    # electrochemical potential vs. SHE
-                NELECT = 216.5,                             # initial guass of number of electrons
+                NELECT = 216.5,                             # initial guess of number of electrons
                 C = 1/80,                                   # 1/k  capacitance per A^2
                 FCPmethod = 'Newton-fitting',               
                 FCPconv = 0.01,
@@ -102,7 +102,7 @@ The original paper used the code of version 1.0
             
     NELECT: 
         Type: float
-        Description: initial guass of number of electrons.
+        Description: initial guess of number of electrons.
         Default: None
             
     NELECT0:
@@ -129,7 +129,7 @@ The original paper used the code of version 1.0
        
     C:
         Type: float
-        Description: initial guass of capacitance per surface area. (e/V/(Å^2))
+        Description: initial guess of capacitance per surface area. (e/V/(Å^2))
         Default: 1/80
 
     max_FCP_iter: 
