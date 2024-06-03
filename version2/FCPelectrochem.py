@@ -10,6 +10,7 @@ import numpy as np
 from ase.calculators import calculator
 from ase.calculators.calculator import Calculator,FileIOCalculator
 from ase.calculators.vasp import Vasp
+from ase.calculators.abacus import Abacus
 from ase.io import write
 from ase.io.vasp import write_vasp
 from ase.parallel import world
@@ -150,14 +151,14 @@ class FCP(FileIOCalculator):
         if not os.path.exists(LogPath):
             os.mkdir(LogPath)
 
-        with open(LogPath+ '/tmp-log-FCP.txt', mode='w',encoding='utf-8') as f:
+        with open(str(LogPath) + '/tmp-log-FCP.txt', mode='w',encoding='utf-8') as f:
             f.write('loop'+'\t'+'NELECT'+'\t' +'Fermi(eV)'+'\t'+'Fermishift(eV)'+'\t'+'mu(eV)'+'\t' + 'Ucal(V)' + '\t' + 'conv(V)'+'\t'+'Ewithoutentropy(eV)'+'\t'+'Ewithoutentropy_grand(eV)' +'\t'+'Etoten(eV)'+'\t'+'Etoten_grand(eV)'+'\t'+ 'Cpersurf(e/V/A^2)'+'\t'+ 'time(s)'+'\n')
         
         if self.wf == None:
             raise calculator.CalculationFailed('please set U (vs. reference electrode)')
 
         def Cevalue(Ne):
-            data=pd.read_csv(LogPath+'/tmp-log-FCP.txt',sep='\t')
+            data=pd.read_csv(str(LogPath) + '/tmp-log-FCP.txt', sep='\t')
             if len(data['NELECT'])>=2:
                 pfit,fitdis=fit(data['NELECT'].values,data['Fermi(eV)'].values+data['Fermishift(eV)'].values,deg=1,full=True)
                 if len(data['NELECT'])>3 and fitdis[0][0]>0.1:
@@ -187,6 +188,9 @@ class FCP(FileIOCalculator):
             
             if self.innercalc.name=='vasp':
                 self.innercalc.set(nelect=self.Nelect)
+            elif self.innercalc.name=='abacus':
+                self.update_abacus_para({'nelec':self.Nelect})
+                self.innercalc = Abacus(profile=self.innercalc.profile, **self.innercalc.parameters)
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
 
@@ -197,6 +201,8 @@ class FCP(FileIOCalculator):
             if self.innercalc.name=='vasp':
                 self.fermishift=self.read_fermishift_vaspsol(outpath=atomstmp.calc.directory+'/'+atomstmp.calc.txt)
             #elif  user-defined Fermishift 
+            elif self.innercalc.name=='abacus':
+                self.fermishift=self.read_fermishift_abacus()
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
             #print(atomstmp.calc.results)
@@ -207,7 +213,7 @@ class FCP(FileIOCalculator):
             grand_energy_free=energy_free+(self.wf+self.fermishift)*(self.Nelect-self.Nelect0)
             grand_energy=energy+(self.wf+self.fermishift)*(self.Nelect-self.Nelect0)
             endcal=time.time()
-            with open(LogPath+ '/tmp-log-FCP.txt', mode='a',encoding='utf-8') as f:
+            with open(str(LogPath) + '/tmp-log-FCP.txt', mode='a', encoding='utf-8') as f:
                 print("%d\t%11.6f\t%11.6f\t%11.6f\t%7.3f\t%11.6f\t%11.6f\t%11.6f\t%11.6f\t%11.6f\t%11.6f\t%11.6f\t%7.0f" %(self.FCPloop, self.Nelect, self.fermi, self.fermishift, -self.wf, Ucal, conv, energy, grand_energy,energy_free,grand_energy_free,self.Cpersurf, endcal-startcal), file = f)
 
             Cevalue(self.Nelect)
@@ -229,11 +235,17 @@ class FCP(FileIOCalculator):
                 self.Nelect=Nelectold-lr*convold*self.C  #lr is learning rate
 
             if abs(self.Nelect-Nelectold)/self.Nelect > 0.05: 
-                os.system('rm '+self.directory +'/WAVECAR')
+                if self.innercalc.name=='vasp':
+                    os.system('rm '+self.directory +'/WAVECAR')
+                elif self.innercalc.name=='abacus':
+                    pass
 
-            magmoms=atomstmp.calc.results['magmoms']
-            #print(magmoms)
-            self.atoms.magmoms=list(magmoms)
+            if self.innercalc.name=='vasp':
+                magmoms=atomstmp.calc.results['magmoms']
+                #print(magmoms)
+                self.atoms.magmoms=list(magmoms)
+            elif self.innercalc.name=='abacus':
+                pass
 
             if abs(conv)<self.FCPconv:
                 break
@@ -244,9 +256,13 @@ class FCP(FileIOCalculator):
             '''
             if self.innercalc.name=='vasp':
                 self.innercalc.set(lsol=False)
+            elif self.innercalc.name=='abacus':
+                '''Implicit solvent in abacus cannot be combined with the compensating charge method, so there is no implicit solvent from the beginning.'''
+                pass
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
 
+            print("explicit_sol is removed")
             atomstmp.calc=self.innercalc
             energy_free = atomstmp.get_potential_energy(force_consistent=True)
             energy=atomstmp.get_potential_energy(force_consistent=False)
@@ -254,18 +270,26 @@ class FCP(FileIOCalculator):
             grand_energy=energy+(self.wf+self.fermishift)*(Nelectold-self.Nelect0)
             
 
-
-        self.results.update(
-        dict(magmom=atomstmp.calc.results['magmom'], 
-            magmoms=atomstmp.calc.results['magmoms'], 
-            dipole=atomstmp.calc.results['dipole'], 
-            nbands=atomstmp.calc.results['nbands'],
-            energy=grand_energy,
-            free_energy=grand_energy_free, 
-            forces=atomstmp.calc.results['forces'], 
-            #fermi=self.fermi, 
-            stress=atomstmp.calc.results['stress'],
-            ))
+        if self.innercalc.name=='vasp':
+            self.results.update(
+                dict(magmom=atomstmp.calc.results['magmom'], 
+                    magmoms=atomstmp.calc.results['magmoms'], 
+                    dipole=atomstmp.calc.results['dipole'], 
+                    nbands=atomstmp.calc.results['nbands'],
+                    energy=grand_energy,
+                    free_energy=grand_energy_free, 
+                    forces=atomstmp.calc.results['forces'], 
+                    #fermi=self.fermi, 
+                    stress=atomstmp.calc.results['stress'],
+                    ))
+        elif self.innercalc.name=='abacus':
+            self.results.update(
+                dict(energy=grand_energy,
+                    free_energy=grand_energy_free, 
+                    forces=atomstmp.calc.results['forces'], 
+                    #fermi=self.fermi, 
+                    stress=atomstmp.calc.results['stress'],
+                    ))
         
 
         with open(self.fcptxt, mode='a',encoding='utf-8') as f:
@@ -293,4 +317,11 @@ class FCP(FileIOCalculator):
         with open(filename, 'r') as fd:
             return fd.readlines()
 
+    def update_abacus_para(self, new_para: Dict[str, Any]):
+        """Currently, ase-abacus cannot use set to update parameters"""
+        self.innercalc.parameters.update(new_para)
+
+    def read_fermishift_abacus(self):
+        """Currently, abacus has no Fermi shift"""
+        return 0.0
 
