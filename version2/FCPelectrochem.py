@@ -250,19 +250,19 @@ class FCP(FileIOCalculator):
             if abs(conv)<self.FCPconv:
                 break
 
+        if self.innercalc.name=='abacus':
+            '''Implicit solvent in abacus cannot be combined with the compensating charge method, so there is no implicit solvent from the beginning.'''
+            self.explicit_sol = False
+
         if self.explicit_sol==True:
             '''
             The coexistence of implicit solvent and explicit solvent will lead to the double counting of solvent effect. Thus, implicit solvent should be removed after the Nelect is converged.
             '''
             if self.innercalc.name=='vasp':
                 self.innercalc.set(lsol=False)
-            elif self.innercalc.name=='abacus':
-                '''Implicit solvent in abacus cannot be combined with the compensating charge method, so there is no implicit solvent from the beginning.'''
-                pass
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
 
-            print("explicit_sol is removed")
             atomstmp.calc=self.innercalc
             energy_free = atomstmp.get_potential_energy(force_consistent=True)
             energy=atomstmp.get_potential_energy(force_consistent=False)
