@@ -32,7 +32,7 @@ parameters = {
    'cal_stress' : 1
 }
 
-profile = AbacusProfile(argv=['mpirun', '-n', '24', 'abacus'])
+profile = AbacusProfile(command='mpirun -n 24 abacus')
 cal_abacus = Abacus(profile=profile, pp=pp, pseudo_dir=pseudo_dir, basis=basis, basis_dir=basis_dir, kpts=kpts, **parameters)
 
 # FCP parameters

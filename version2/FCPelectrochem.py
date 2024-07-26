@@ -48,7 +48,7 @@ class FCP(FileIOCalculator):
           Adjust ne again even when potential is within tolerance. This is useful to set to True along with a loose potential tolerance (FCPconv) to allow the potential and structure to be simultaneously optimized in a geometry optimization, for example. Default: False.
         '''
         
-        FileIOCalculator.__init__(self)
+        FileIOCalculator.__init__(self, profile=innercalc.profile)
         
         
         self._atoms = None
@@ -69,6 +69,11 @@ class FCP(FileIOCalculator):
         self.adaptive_lr=adaptive_lr
         self.fcptxt=fcptxt
         self.innercalc=innercalc
+
+        if self.innercalc.name=='abacus':
+            '''The vacuum level only can be output when out_pot = 2'''
+            self.update_abacus_para({'out_pot': 2})
+
         with open(self.fcptxt, mode='w',encoding='utf-8') as f:
             f.write('loop'+'\t'+'NELECT'+'\t' +'Fermi(eV)'+'\t'+'Fermishift(eV)'+'\t'+'mu(eV)'+'\t' + 'U(V)' + '\t' + 'conv(V)'+'\t'+'Ewithoutentropy(eV)'+'\t'+'Ewithoutentropy_grand(eV)' +'\t'+'Etoten(eV)'+'\t'+'Etoten_grand(eV)'+'\t'+ 'Cpersurf(e/V/A^2)'+'\n')
 
@@ -202,7 +207,8 @@ class FCP(FileIOCalculator):
                 self.fermishift=self.read_fermishift_vaspsol(outpath=atomstmp.calc.directory+'/'+atomstmp.calc.txt)
             #elif  user-defined Fermishift 
             elif self.innercalc.name=='abacus':
-                self.fermishift=self.read_fermishift_abacus()
+                out_suffix = (self.innercalc.parameters.get("suffix") if self.innercalc.parameters.get("suffix", None) else "ABACUS")
+                self.fermishift=self.read_fermishift_abacus(outpath=str(atomstmp.calc.directory)+ '/OUT.'+ out_suffix +'/running_scf.log')
             else:
                 raise calculator.CalculationFailed('the calculator is not supported yet')
             #print(atomstmp.calc.results)
@@ -321,7 +327,15 @@ class FCP(FileIOCalculator):
         """Currently, ase-abacus cannot use set to update parameters"""
         self.innercalc.parameters.update(new_para)
 
-    def read_fermishift_abacus(self):
-        """Currently, abacus has no Fermi shift"""
-        return 0.0
+    def read_fermishift_abacus(self,outpath, lines=None):
+        """Method that reads the vacuum level from running*.log file"""
+        if not lines:
+            lines = self.load_file(outpath)
+
+        vacuum = None
+        for line in lines:
+            if 'vacuum' in line:
+                if float(line.split()[4]) !=0.0:
+                    vacuum = 0.0 - float(line.split()[4])
+        return vacuum
 
